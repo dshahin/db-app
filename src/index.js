@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('foo.db');
@@ -17,18 +17,33 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+    
+  db.serialize(() => {
+    db.run("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY ON CONFLICT REPLACE, value TEXT)");
+    
+    db.each("SELECT value FROM config WHERE key = 'title'", (err, row) => {
+        console.log(row.value);
+        mainWindow.setTitle(row.value)
+    });
+  });
 
   // and load the index.html of the app.
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
+
+  
 };
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
+app.on('ready', ()=>{
+  ipcMain.on('set-title', handleSetTitle);
+  createWindow();
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -49,3 +64,14 @@ app.on('activate', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+function handleSetTitle (event, title) {
+  const webContents = event.sender
+  const win = BrowserWindow.fromWebContents(webContents)
+  db.serialize(() => {
+      
+      const stmt = db.prepare("INSERT OR REPLACE INTO config VALUES ('title',?)");
+      stmt.run(title);
+      stmt.finalize();
+  });
+  win.setTitle(title)
+}
