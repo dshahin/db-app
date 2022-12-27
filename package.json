@@ -20,6 +20,7 @@
   "dependencies": {
     "electron-squirrel-startup": "^1.0.0",
     "handlebars": "^4.7.7",
+    "simple-oauth2": "^5.0.0",
     "sqlite3": "^5.1.4"
   },
   "devDependencies": {

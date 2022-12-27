@@ -7,7 +7,25 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+const config = {
+  client: {
+    id: '3MVG9tgPkewDjBiIknP6e8.olQRM6a3h4mmcGxoCeEYMa1HFObL2y8NoVtlRIuh.jeEbfGQbQER3oVutSnglg',
+    secret: 'FCBF3DAF3A4F75C3FD1B62B8B202D8D2E1847BB3AD75A8E45E300141155604E0'
+  },
+  auth: {
+    tokenHost: 'https://test.salesforce.com',
+    authorizePath: '/services/oauth2/authorize',
+    tokenPath: '/services/oauth2/token'
+  }
+};
 
+const { ClientCredentials, ResourceOwnerPassword, AuthorizationCode } = require('simple-oauth2');
+const client = new AuthorizationCode(config);
+
+const authorizationUri = client.authorizeURL({
+  redirect_uri: 'electron://oauth-callback',
+  scope: 'full'
+});
 
 const createWindow = () => {
   
@@ -20,8 +38,36 @@ const createWindow = () => {
     },
   });
 
+     // Open the DevTools.
+     mainWindow.webContents.openDevTools();
+
+
+     
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    console.log({url})
+    const code = /\?code=(.+)$/.exec(url);
+    if (code) {
+      console.log({code})
+      event.preventDefault();
+      let decoded = decodeURIComponent(code[1])
+      requestToken(decoded, mainWindow);
+    }else{
+      console.log('no code')
+    }
+  });
+
+  mainWindow.webContents.on('did-navigate', (event, url) => {
+    // mainWindow.webContents.executeJavaScript(`
+    //   alert('foo')
+    // `);
+    // console.log(url)
+  });
+
+  mainWindow.loadURL(authorizationUri);
+
   // and load the index.html of the app.
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  // mainWindow.loadFile(path.join(__dirname, 'index.html'));
   
   let config = {};
   const win = BrowserWindow.fromWebContents(mainWindow.webContents)
@@ -38,9 +84,7 @@ const createWindow = () => {
 
   });
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
-
+ 
   
 
   
@@ -77,13 +121,27 @@ app.on('activate', () => {
 function handleSetTitle (event, title) {
   const webContents = event.sender
   const win = BrowserWindow.fromWebContents(webContents)
-  db.serialize(() => {
-      
-      const stmt = db.prepare("INSERT OR REPLACE INTO config VALUES ('title',?)");
-      stmt.run(title);
-      stmt.finalize();
-  });
+  setConfig('title',title);
   win.setTitle(title)
+}
+
+function requestToken(code, mainWindow) {
+  const tokenConfig = {
+    code: code,
+    redirect_uri: 'electron://oauth-callback'
+  };
+
+  client.getToken(tokenConfig)
+    .then((AccessToken) => {
+      console.log(AccessToken)
+      // You can now use the access token to make API requests
+      setConfig('access_token', AccessToken.token.access_token);
+      setConfig('instance_url', AccessToken.token.instance_url);
+      mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    })
+    .catch((error) => {
+      console.log('Access Token Error', error.message);
+    });
 }
 
 
@@ -115,4 +173,12 @@ function createTable(lines){
     }
   });
 
+}
+
+function setConfig(key,value){
+  db.serialize(() => {
+    const stmt = db.prepare("INSERT OR REPLACE INTO config VALUES (?,?)");
+    stmt.run(key,value);
+    stmt.finalize();
+  });
 }
