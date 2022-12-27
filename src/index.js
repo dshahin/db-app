@@ -1,14 +1,16 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('foo.db');
-
+const db = new sqlite3.Database('config.db');
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+
+
 const createWindow = () => {
+  
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
@@ -17,22 +19,29 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-    
-  db.serialize(() => {
-    db.run("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY ON CONFLICT REPLACE, value TEXT)");
-    
-    db.each("SELECT value FROM config WHERE key = 'title'", (err, row) => {
-        console.log(row.value);
-        mainWindow.setTitle(row.value)
-    });
-  });
 
   // and load the index.html of the app.
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
   
+  let config = {};
+  const win = BrowserWindow.fromWebContents(mainWindow.webContents)
+  db.serialize( () => {
+    db.run("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY ON CONFLICT REPLACE, value TEXT)");
+    
+    db.each("SELECT key, value FROM config", (err, row) => {
+      console.log({row})
+        config[row.key] = row.value;
+        if(row.key === 'title'){
+          win.setTitle(config.title)
+        }
+    });
+
+  });
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
+
+  
 
   
 };
@@ -42,6 +51,7 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', ()=>{
   ipcMain.on('set-title', handleSetTitle);
+  ipcMain.on('set-csv', handleSetCSV);
   createWindow();
 });
 
@@ -74,4 +84,35 @@ function handleSetTitle (event, title) {
       stmt.finalize();
   });
   win.setTitle(title)
+}
+
+
+function handleSetCSV (event, text) {
+  const webContents = event.sender
+  const csvText = text;
+  const lines = csvText.split(/\n/);
+  console.log(lines[0]);
+  console.log(`${lines.length} lines`);
+  createTable(lines)
+}
+
+function createTable(lines){
+  let headers = lines.shift();
+  headers = headers.replaceAll(/\(|\)|\%|\?|\#/g, '');
+  headers = headers.replaceAll(' ', '_');
+  var query = `CREATE TABLE INPUT_CSV ( ${headers} );`
+  console.log(query)
+  db.serialize( () => {
+    db.run('DROP TABLE IF EXISTS INPUT_CSV');
+    db.run(query);
+     
+    for(let line of lines){
+      if(line.length){
+        let insert_stmt = `INSERT INTO INPUT_CSV VALUES(${line})`;
+        console.log(insert_stmt)
+        db.run(insert_stmt);
+      }
+    }
+  });
+
 }

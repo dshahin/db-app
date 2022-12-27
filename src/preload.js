@@ -3,5 +3,10 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    setTitle: (title) => ipcRenderer.send('set-title', title)
+    setTitle: (title) => ipcRenderer.send('set-title', title),
+    setCSV: (csvContents) => ipcRenderer.send('set-csv', csvContents)
 })
+
+// contextBridge.exposeInMainWorld('electronAPI', {
+//     setCSV: (csvContents) => ipcRenderer.send('set-csv', csvContents)
+// })
