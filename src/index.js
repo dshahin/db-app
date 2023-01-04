@@ -9,8 +9,8 @@ if (require('electron-squirrel-startup')) {
 
 const config = {
   client: {
-    id: '3MVG9tgPkewDjBiIknP6e8.olQRM6a3h4mmcGxoCeEYMa1HFObL2y8NoVtlRIuh.jeEbfGQbQER3oVutSnglg',
-    secret: 'FCBF3DAF3A4F75C3FD1B62B8B202D8D2E1847BB3AD75A8E45E300141155604E0'
+    id: '3MVG957CwCMEFdzdnrnTdHZZrsJ4hNVm4.WkDZVGW4LSTwE0w91RXPWmlkvwMgCbqtvbdNZDIU7mO8VAdhblx',
+    secret: '08979DB39440B8365DE5380A1E8B86116E5070D03349AB69F0AF41DD3AB6AD19'
   },
   auth: {
     tokenHost: 'https://test.salesforce.com',
@@ -24,7 +24,7 @@ const client = new AuthorizationCode(config);
 
 const authorizationUri = client.authorizeURL({
   redirect_uri: 'electron://oauth-callback',
-  scope: 'full'
+  scope: 'full refresh_token offline_access'
 });
 
 const createWindow = () => {
@@ -61,10 +61,10 @@ const createWindow = () => {
     // mainWindow.webContents.executeJavaScript(`
     //   alert('foo')
     // `);
-    // console.log(url)
+    console.log(url)
   });
 
-  mainWindow.loadURL(authorizationUri);
+  
 
   // and load the index.html of the app.
   // mainWindow.loadFile(path.join(__dirname, 'index.html'));
@@ -74,17 +74,41 @@ const createWindow = () => {
   db.serialize( () => {
     db.run("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY ON CONFLICT REPLACE, value TEXT)");
     
-    db.each("SELECT key, value FROM config", (err, row) => {
+    db.each("SELECT key, value FROM config", async (err, row) => {
       console.log({row})
         config[row.key] = row.value;
         if(row.key === 'title'){
           win.setTitle(config.title)
         }
+        let accessToken = {};
+        if(row.key === 'access_token'){
+          accessToken = client.createToken(JSON.parse(row.value));
+          if(accessToken.expired()){
+            try {
+              console.error('expired token');
+              const refreshParams = {
+                scope: 'full',
+              };
+        
+              accessToken = await accessToken.refresh(refreshParams);
+              setConfig('access_token', JSON.stringify(accessToken))
+              
+            } catch (error) {
+              console.log('Error refreshing access token: ', error.message);
+            }
+          }
+          console.log('hey',accessToken);
+          mainWindow.loadFile(path.join(__dirname, 'index.html'));
+        }else{
+          mainWindow.loadURL(authorizationUri);
+        }
     });
-
+    //no db? load the oauth page
+    mainWindow.loadURL(authorizationUri);
   });
 
- 
+  
+  
   
 
   
@@ -133,10 +157,9 @@ function requestToken(code, mainWindow) {
 
   client.getToken(tokenConfig)
     .then((AccessToken) => {
-      console.log(AccessToken)
+      console.log({AccessToken})
       // You can now use the access token to make API requests
-      setConfig('access_token', AccessToken.token.access_token);
-      setConfig('instance_url', AccessToken.token.instance_url);
+      setConfig('access_token', JSON.stringify(AccessToken))
       mainWindow.loadFile(path.join(__dirname, 'index.html'));
     })
     .catch((error) => {
